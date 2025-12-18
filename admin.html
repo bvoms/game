@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>G44 ADMIN</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { background: #0f0716; color: #f8fafc; font-family: 'Inter', sans-serif; }
+        .glass { background: rgba(30, 15, 50, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(139, 92, 246, 0.1); }
+    </style>
+</head>
+<body class="p-8">
+    <div class="max-w-6xl mx-auto space-y-12">
+        <h1 class="text-2xl font-black italic uppercase">GAME44 <span class="text-violet-500">ADMIN</span></h1>
+
+        <div class="grid lg:grid-cols-2 gap-8">
+            <div class="glass p-6 rounded-3xl space-y-4">
+                <h2 class="text-xs font-black uppercase text-violet-400">Новое Задание</h2>
+                <select id="task-faction" class="w-full bg-black/40 border border-white/10 p-4 rounded-xl text-xs">
+                    <option value="44">Игрок 44 (Интернет)</option>
+                    <option value="93">Игрок 93 (Реал)</option>
+                </select>
+                <input id="task-target" placeholder="Лично для (@tag)" class="w-full bg-black/40 border border-white/10 p-4 rounded-xl text-xs">
+                <input id="task-title" placeholder="Заголовок" class="w-full bg-black/40 border border-white/10 p-4 rounded-xl text-xs">
+                <textarea id="task-desc" placeholder="Описание" class="w-full bg-black/40 border border-white/10 p-4 rounded-xl text-xs h-24"></textarea>
+                <input type="number" id="task-reward" placeholder="Награда TON" class="w-full bg-black/40 border border-white/10 p-4 rounded-xl text-xs">
+                <input type="number" id="task-duration" placeholder="Срок (часов)" value="2" class="w-full bg-black/40 border border-white/10 p-4 rounded-xl text-xs">
+                <button onclick="createTask()" class="w-full bg-violet-600 p-4 rounded-xl font-black uppercase text-xs">Опубликовать</button>
+            </div>
+
+            <div class="space-y-6">
+                <section>
+                    <h2 class="text-xs font-black uppercase text-rose-400 mb-4 tracking-widest">Проверка Заданий</h2>
+                    <div id="pending-list" class="space-y-3"></div>
+                </section>
+                <section>
+                    <h2 class="text-xs font-black uppercase text-amber-400 mb-4 tracking-widest">Выдача Подарков</h2>
+                    <div id="gift-list" class="space-y-3"></div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://xzzaoniuzvcxqfugvfzh.supabase.co'; 
+        const SUPABASE_KEY = 'sb_publishable_YAn708jttD0b0vAGLPreog_ZnCvFhAH';
+        const TG_BOT_TOKEN = '8321050426:AAH4fKadiex7i9NQnC7T2ZyjscRknQgFKlI';
+        const TG_CHAT_ID = '-1003693227904';
+        const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        async function createTask() {
+            const faction = document.getElementById('task-faction').value;
+            const target = document.getElementById('task-target').value || null;
+            const title = document.getElementById('task-title').value;
+            const description = document.getElementById('task-desc').value;
+            const reward = parseFloat(document.getElementById('task-reward').value);
+            const duration_hours = parseInt(document.getElementById('task-duration').value);
+            await sb.from('tasks').insert({ faction, target, title, description, reward, duration_hours });
+            alert('Задание создано!'); refresh();
+        }
+
+        async function refresh() {
+            const { data: reports } = await sb.from('reports').select('*').eq('status', 'pending');
+            const pList = document.getElementById('pending-list'); pList.innerHTML = '';
+            reports?.forEach(r => {
+                const div = document.createElement('div');
+                div.className = 'glass p-4 rounded-2xl flex justify-between items-center';
+                div.innerHTML = `<div><p class="text-[9px] font-black text-violet-400">${r.player_tag}</p><p class="text-xs font-bold">${r.task_title}</p></div>
+                <div class="flex gap-2"><button onclick="approve('${r.id}','${r.player_tag}',${r.reward})" class="bg-violet-600 px-3 py-1.5 rounded text-[10px] font-black">OK</button></div>`;
+                pList.appendChild(div);
+            });
+
+            const { data: orders } = await sb.from('gift_orders').select('*').eq('status', 'pending');
+            const gList = document.getElementById('gift-list'); gList.innerHTML = '';
+            orders?.forEach(o => {
+                const div = document.createElement('div');
+                div.className = 'glass p-4 rounded-2xl flex justify-between items-center';
+                div.innerHTML = `<div><p class="text-[9px] font-black text-amber-400">${o.player_tag}</p><p class="text-xs font-bold">${o.gift_name}</p></div>
+                <button onclick="deliverGift('${o.id}', '${o.player_tag}', '${o.gift_name}')" class="bg-amber-500 px-3 py-1.5 rounded text-[10px] font-black text-black">ВЫДАНО</button>`;
+                gList.appendChild(div);
+            });
+        }
+
+        async function approve(rid, ptag, reward) {
+            const { data: user } = await sb.from('users').select('balance').eq('id', ptag).single();
+            await sb.from('users').update({ balance: parseFloat(user.balance) + reward }).eq('id', ptag);
+            await sb.from('reports').update({ status: 'approved' }).eq('id', rid);
+            refresh();
+        }
+
+        async function deliverGift(oid, ptag, gname) {
+            await sb.from('gift_orders').update({ status: 'delivered' }).eq('id', oid);
+            refresh();
+        }
+
+        setInterval(refresh, 5000); window.onload = refresh;
+    </script>
+</body>
+</html>
